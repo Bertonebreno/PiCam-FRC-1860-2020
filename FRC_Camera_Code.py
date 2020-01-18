@@ -6,7 +6,6 @@ import numpy as np
 import json
 import logging
 import subprocess
-import time
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -15,8 +14,7 @@ netTable = NetworkTablesInstance.getDefault()
 netTable.startClientTeam(1860)
 
 netTableCalibracao = netTable.getEntry("/CALIBRACAO")
-CALIBRACAO = netTableCalibracao.getBoolean(1)
-
+netTableDistance = netTable.getEntry("/Distance")
 netTableHue = netTable.getEntry("/Camera/Hue")
 netTableSaturation = netTable.getEntry("/Camera/Saturation")
 netTableValue = netTable.getEntry("/Camera/Value")
@@ -26,12 +24,12 @@ netTableCameraBrightness = netTable.getEntry("/Camera/Brightness")
 netTableCameraExposure = netTable.getEntry("/Camera/Exposure")
 netTableDistanceParameters = netTable.getEntry("/Camera/DistanceParameters")
 
-netTableDistanceParameters = netTableDistanceParameters.getDoubleArray([0,0,0])
-
+CALIBRACAO = netTableCalibracao.getBoolean(1)
 focalLength = netTableFocalLength.getDouble(380.191176*2)
 cameraHeight = netTableCameraHeight.getDouble(1)
 brightness = netTableCameraBrightness.getDouble(5)
 exposure = netTableCameraExposure.getDouble(12)
+distanceParameters = netTableDistanceParameters.getDoubleArray([0,0,0])
 
 class GripPipeline:
     """
@@ -50,7 +48,7 @@ class GripPipeline:
         self.hsv_threshold_output = None
 
         self.__find_contours_input = self.hsv_threshold_output
-        self.__find_contours_external_only = False
+        self.__find_contours_external_only = False #Vamos tentar usar como True, talvez ajude
 
         self.find_contours_output = None
 
@@ -66,24 +64,23 @@ class GripPipeline:
         self.__filter_contours_min_vertices = 0.0
         self.__filter_contours_min_ratio = 0.0
         self.__filter_contours_max_ratio = 1000.0
+        # vamos mexer nessa galera pra ver se fica bom, serio parece ajudar
 
         self.filter_contours_output = None
-  
-    # def getHSVParameters(self):
-    #     try:
-    #         self.__hsv_threshold_hue = netTableHue.getDoubleArray([0, 255])
-    #         self.__hsv_threshold_saturation = netTableSaturation.getDoubleArray([0, 255])
-    #         self.__hsv_threshold_value = netTableValue.getDoubleArray([0, 255])
-    #     except:
-    #         print("Error HSV parameters")
 
     def getHSVParameters(self):
         try:
-            with open('parameters.json', 'r') as f:
-                parameters_dict = json.load(f)
-            self.__hsv_threshold_hue = parameters_dict['hue']
-            self.__hsv_threshold_saturation = parameters_dict['sat']
-            self.__hsv_threshold_value = parameters_dict['val']
+            # First we will try to get hsv parameters from networktables
+            self.__hsv_threshold_hue = netTableHue.getDoubleArray([0, 0])
+            self.__hsv_threshold_saturation = netTableSaturation.getDoubleArray([0, 0])
+            self.__hsv_threshold_value = netTableValue.getDoubleArray([0, 0])
+            if self.__hsv_threshold_hue == [0, 0] and self.__hsv_threshold_saturation == [0, 0] and self.__hsv_threshold_value == [0, 0]:
+                # Probably we are not using values from networktables, so let's take them from the internal json
+                with open('parameters.json', 'r') as f:
+                    parameters_dict = json.load(f)
+                self.__hsv_threshold_hue = parameters_dict['hue']
+                self.__hsv_threshold_saturation = parameters_dict['sat']
+                self.__hsv_threshold_value = parameters_dict['val']
         except:
             print("Error HSV parameters")
 
@@ -105,8 +102,8 @@ class GripPipeline:
         self.__filter_contours_contours = self.find_contours_output
         (self.filter_contours_output) = self.__filter_contours(self.__filter_contours_contours, self.__filter_contours_min_area, self.__filter_contours_min_perimeter, self.__filter_contours_min_width, self.__filter_contours_max_width, self.__filter_contours_min_height, self.__filter_contours_max_height, self.__filter_contours_solidity, self.__filter_contours_max_vertices, self.__filter_contours_min_vertices, self.__filter_contours_min_ratio, self.__filter_contours_max_ratio)
         
-        imagem_teste = source0
-        cv2.drawContours(imagem_teste, self.filter_contours_output, -1, (0,255,0), 3)
+        baseImage = source0 #renomeei o "imagem_teste" pra 'baseImage"
+        cv2.drawContours(baseImage, self.filter_contours_output, -1, (0,255,0), 3)
         
         #obtain the first 2 points of contours
         cntx1 = self.filter_contours_output
@@ -117,13 +114,13 @@ class GripPipeline:
             M = cv2.moments(c)
             cX = int(M["m10"] / M["m00"])
             cY = int(M["m01"] / M["m00"])
-            cv2.circle(source0, (cX, cY), 7, (0, 0, 255), 5)
-            cv2.drawContours(source0, self.filter_contours_output, -1, (0,255,0), 3)
-            cv2.putText(source0, str(cX), (cX - 20, cY - 20),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-            cv2.putText(source0, str(cY), (cX + 20, cY - 20),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-        return imagem_teste, self.hsv_threshold_output, cX, cY
+            cv2.circle(baseImage, (cX, cY), 7, (0, 0, 255), 5)
+            cv2.drawContours(baseImage, self.filter_contours_output, -1, (0,255,0), 3)
+            cv2.putText(baseImage, str(cX), (cX - 20, cY - 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 255), 2)
+            cv2.putText(baseImage, str(cY), (cX + 20, cY - 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 255), 2)
+        return baseImage, self.hsv_threshold_output, cX, cY
 
     @staticmethod
     def __hsv_threshold(input, hue, sat, val):
@@ -153,7 +150,7 @@ class GripPipeline:
         else:
             mode = cv2.RETR_LIST
         method = cv2.CHAIN_APPROX_SIMPLE
-        im2, contours, hierarchy =cv2.findContours(input, mode=mode, method = method)
+        im2, contours, hierarchy = cv2.findContours(input, mode = mode, method = method)
         return contours
 
     @staticmethod
@@ -243,7 +240,6 @@ def getDistanceParameters():
 
 processImage = GripPipeline()
 def main():
-    distanceParameters = getDistanceParameters()
     imageResolutionRasp = [1280, 720]
     imageResolutionSend = [320, 180]
 
@@ -251,7 +247,7 @@ def main():
     cs.enableLogging()
     outputStreamEdited = cs.putVideo("processedImage", imageResolutionSend[0], imageResolutionSend[1])
     outputStreamBinary = cs.putVideo("binaryImage", imageResolutionSend[0], imageResolutionSend[1])
-    img = np.zeros(shape=(imageResolutionRasp[1], imageResolutionRasp[0], 3), dtype=np.uint8) #240 lines and 320 columns
+    img = np.zeros(shape=(imageResolutionRasp[1], imageResolutionRasp[0], 3), dtype=np.uint8)
 
     camera = UsbCamera("Camera", "/dev/video0")
     camera.setResolution(imageResolutionRasp[0], imageResolutionRasp[1])
@@ -260,8 +256,6 @@ def main():
     cs.addCamera(camera)
     cvSink = cs.getVideo()
     cvSink.setSource(camera)
-    tempoInicial = time.time()
-    marcadorDeTempo = 0
     while True:
         if(CALIBRACAO == True):
             processImage.getHSVParameters()
@@ -270,13 +264,10 @@ def main():
         processedImage, binaryImage, objectXPos, objectYPos = processImage.process(img)
         distance = findDistance(objectYPos, getDistanceParameters())
         angle = getAngle([objectXPos, objectYPos], imageResolutionRasp)
-        if time.time()-1>tempoInicial:
-            print("Tempo: {} Distancia: {} XPos: {}, YPos: {}".format(marcadorDeTempo,distance, objectXPos, objectYPos))
-            marcadorDeTempo+=1
-        netTableDistance = netTable.getEntry("/Distance")
+        print(distance, objectXPos, objectYPos)
+        
         smallerProcessedImage = cv2.resize(processedImage, (imageResolutionSend[0], imageResolutionSend[1]))
         smallerBinaryImage = cv2.resize(binaryImage, (imageResolutionSend[0], imageResolutionSend[1]))
         outputStreamEdited.putFrame(smallerProcessedImage)
         outputStreamBinary.putFrame(smallerBinaryImage)
 main()
-kkk = 0
