@@ -5,11 +5,10 @@ import cv2
 import numpy as np
 import json
 import logging
-import subprocess
+import time
 
 logging.basicConfig(level=logging.DEBUG)
 
-#NetworkTables.initialize(server='roborio-1860-frc.local')
 netTable = NetworkTablesInstance.getDefault()
 netTable.startClientTeam(1860)
 
@@ -102,7 +101,7 @@ class GripPipeline:
         self.__filter_contours_contours = self.find_contours_output
         (self.filter_contours_output) = self.__filter_contours(self.__filter_contours_contours, self.__filter_contours_min_area, self.__filter_contours_min_perimeter, self.__filter_contours_min_width, self.__filter_contours_max_width, self.__filter_contours_min_height, self.__filter_contours_max_height, self.__filter_contours_solidity, self.__filter_contours_max_vertices, self.__filter_contours_min_vertices, self.__filter_contours_min_ratio, self.__filter_contours_max_ratio)
         
-        baseImage = source0 #renomeei o "imagem_teste" pra 'baseImage"
+        baseImage = source0
         cv2.drawContours(baseImage, self.filter_contours_output, -1, (0,255,0), 3)
         
         #obtain the first 2 points of contours
@@ -198,8 +197,26 @@ class GripPipeline:
             output.append(contour)
         return output
 
-def findDistance(imageHeight, parameters):
-    return parameters[0]/np.tan(parameters[1]*imageHeight+parameters[2])
+
+def expo(number, times):
+    x = 1
+    for i in range(times):
+        x*=number
+    return x
+
+def findDistance(imageHeight, parameters=0):
+    parameters = [[0], [0], [0]]
+    parameters[0] = [1776.5900196236644, -0.00158998129500108, 1.0136829121159376]
+    parameters[1] = [1375.2775678593678, -0.0014182265240214801, 0.8607600759464676]
+    parameters[2] = [6747.5097822967155, -0.0023190368162005416, 1.8947975565541881]
+    baseDistance = parameters[0][0]/np.tan(parameters[0][1]*imageHeight+parameters[0][2])
+    if baseDistance <= 3700: 
+       return parameters[1][0]/np.tan(parameters[1][1]*imageHeight+parameters[1][2])
+    else:
+        return parameters[2][0]/np.tan(parameters[2][1]*imageHeight+parameters[2][2])
+    # else: #4601 - 15000 millimeters
+    #     parameters[4][0]/np.tan(parameters[4][1]*imageHeight+parameters[4][2])
+
 
 #Returns an array [XAngle, YAngle] 
 def getAngle(position, imageResolution): 
@@ -256,6 +273,8 @@ def main():
     cs.addCamera(camera)
     cvSink = cs.getVideo()
     cvSink.setSource(camera)
+    tempoInicial = time.time()
+    timePassed = 0
     while True:
         if(CALIBRACAO == True):
             processImage.getHSVParameters()
@@ -264,8 +283,12 @@ def main():
         processedImage, binaryImage, objectXPos, objectYPos = processImage.process(img)
         distance = findDistance(objectYPos, getDistanceParameters())
         angle = getAngle([objectXPos, objectYPos], imageResolutionRasp)
-        print(distance, objectXPos, objectYPos)
-        
+        timeDifference = time.time() - tempoInicial
+        if timeDifference > 2:
+            print("Time: {} Distance: {} XPos: {} YPos: {}".format(timePassed, distance, objectXPos, objectYPos))
+            tempoInicial = time.time()
+            timePassed+=2
+
         smallerProcessedImage = cv2.resize(processedImage, (imageResolutionSend[0], imageResolutionSend[1]))
         smallerBinaryImage = cv2.resize(binaryImage, (imageResolutionSend[0], imageResolutionSend[1]))
         outputStreamEdited.putFrame(smallerProcessedImage)
