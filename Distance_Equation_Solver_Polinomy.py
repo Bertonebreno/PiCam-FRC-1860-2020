@@ -3,10 +3,18 @@ import numpy as np
 x = [158, 283, 356, 435, 468, 475]
 d = [1860, 2780, 3700, 5510, 6430, 7410]
 
-M = np.array([[1, x[0], x[0]**2, x[0]**3, x[0]**4, x[0]**5], [1, x[1], x[1]**2, x[1]**3, x[1]**4, x[1]**5], [1, x[2], x[2]**2, x[2]**3, x[2]**4, x[2]**5], [1, x[3], x[3]**2, x[3]**3, x[3]**4, x[3]**5],[1, x[4], x[4]**2, x[4]**3, x[4]**4, x[4]**5],[1, x[5], x[5]**2, x[5]**3, x[5]**4, x[5]**5]])
+n = len(x)-1
+if (len(x) != len(d)):
+    print("different lengths")
 
+arr = []
+for i in range(0, n+1):
+    line = []
+    for j in range(n, -1, -1):
+        line.append(x[i]**j)
+    arr.append(line)
+M = np.array(arr)
 D = np.array(d)
-
 X = np.linalg.solve(M, D)
 
 print(X)
