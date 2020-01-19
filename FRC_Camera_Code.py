@@ -205,15 +205,21 @@ def expo(number, times):
     return x
 
 def findDistance(imageHeight, parameters=0):
-    parameters = [[0], [0], [0]]
-    parameters[0] = [1776.5900196236644, -0.00158998129500108, 1.0136829121159376]
-    parameters[1] = [1375.2775678593678, -0.0014182265240214801, 0.8607600759464676]
-    parameters[2] = [6747.5097822967155, -0.0023190368162005416, 1.8947975565541881]
-    baseDistance = parameters[0][0]/np.tan(parameters[0][1]*imageHeight+parameters[0][2])
-    if baseDistance <= 3700: 
-       return parameters[1][0]/np.tan(parameters[1][1]*imageHeight+parameters[1][2])
-    else:
-        return parameters[2][0]/np.tan(parameters[2][1]*imageHeight+parameters[2][2])
+    parameters = [-1.25682561e+06,  2.15050078e+04, -1.39582986e+02,  4.35240242e-01, -6.56714444e-04,  3.85778698e-07]
+    support = [np.power(imageHeight, 5), np.power(imageHeight, 4), np.power(imageHeight, 3), np.power(imageHeight, 2), np.power(imageHeight, 1), np.power(imageHeight, 0)]
+    distance = 0
+    for i in range(5):
+        distance += parameters[i]*support[i]
+    return distance
+    # parameters = [[0], [0], [0]]
+    # parameters[0] = [1776.5900196236644, -0.00158998129500108, 1.0136829121159376]
+    # parameters[1] = [1375.2775678593678, -0.0014182265240214801, 0.8607600759464676]
+    # parameters[2] = [6747.5097822967155, -0.0023190368162005416, 1.8947975565541881]
+    # baseDistance = parameters[0][0]/np.tan(parameters[0][1]*imageHeight+parameters[0][2])
+    # if baseDistance <= 3700: 
+    #    return parameters[1][0]/np.tan(parameters[1][1]*imageHeight+parameters[1][2])
+    # else:
+    #     return parameters[2][0]/np.tan(parameters[2][1]*imageHeight+parameters[2][2])
     # else: #4601 - 15000 millimeters
     #     parameters[4][0]/np.tan(parameters[4][1]*imageHeight+parameters[4][2])
 
