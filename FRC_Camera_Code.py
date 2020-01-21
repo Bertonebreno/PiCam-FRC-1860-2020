@@ -6,6 +6,7 @@ import numpy as np
 import json
 import logging
 import time
+from math import tan
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -26,9 +27,12 @@ netTableDistanceParameters = netTable.getEntry("/Camera/DistanceParameters")
 CALIBRACAO = netTableCalibracao.getBoolean(1)
 focalLength = netTableFocalLength.getDouble(380.191176*2)
 cameraHeight = netTableCameraHeight.getDouble(1)
-brightness = netTableCameraBrightness.getDouble(5)
-exposure = netTableCameraExposure.getDouble(12)
+brightness = netTableCameraBrightness.getDouble(8)
+exposure = netTableCameraExposure.getDouble(10)
 distanceParameters = netTableDistanceParameters.getDoubleArray([0,0,0])
+
+total = 1
+achou = 1
 
 class GripPipeline:
     """
@@ -54,12 +58,12 @@ class GripPipeline:
         self.__filter_contours_contours = self.find_contours_output
         self.__filter_contours_min_area = 1000
         self.__filter_contours_min_perimeter = 0.0
-        self.__filter_contours_min_width = 0.0
-        self.__filter_contours_max_width = 1000.0
-        self.__filter_contours_min_height = 0.0
-        self.__filter_contours_max_height = 1000.0
+        self.__filter_contours_min_width = 100.0
+        self.__filter_contours_max_width = 600.0
+        self.__filter_contours_min_height = 50.0
+        self.__filter_contours_max_height = 300.0
         self.__filter_contours_solidity = [0.0, 100.0]
-        self.__filter_contours_max_vertices = 1000000.0
+        self.__filter_contours_max_vertices = 10000.0
         self.__filter_contours_min_vertices = 0.0
         self.__filter_contours_min_ratio = 0.0
         self.__filter_contours_max_ratio = 1000.0
@@ -103,10 +107,26 @@ class GripPipeline:
         
         baseImage = source0
         cv2.drawContours(baseImage, self.filter_contours_output, -1, (0,255,0), 3)
-        
         #obtain the first 2 points of contours
         cntx1 = self.filter_contours_output
         cntx = self.filter_contours_output
+        global total
+        global achou
+        total += 1
+        try:
+            c = cntx[0]
+            extLeft = tuple(c[c[:, :, 0].argmin()][0])
+            cv2.circle(baseImage, extLeft, 7, (0, 0, 255), 5)
+            extRight = tuple(c[c[:, :, 0].argmax()][0])
+            cv2.circle(baseImage, extRight, 7, (0, 0, 255), 5)
+            extTop = tuple(c[c[:, :, 1].argmin()][0])
+            cv2.circle(baseImage, extTop, 7, (0, 0, 255), 5)
+            extBottom = tuple(c[c[:, :, 1].argmax()][0]) 
+            cv2.circle(baseImage, extBottom, 7, (0, 0, 255), 5)
+            achou += 1
+            #print("left:{} right:{} top:{} bottom:{}".format(extLeft, extRight, extTop, extBottom))
+        except:
+            print("nao tem")
         cX, cY = 0, 0
         for c in self.filter_contours_output:
             # compute the center of the contour
@@ -119,6 +139,7 @@ class GripPipeline:
                 cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 255), 2)
             cv2.putText(baseImage, str(cY), (cX + 20, cY - 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 255), 2)
+            #cv2.rectangle(baseImage, (500, 300), (700,500), (255, 0, 0), 10)
         return baseImage, self.hsv_threshold_output, cX, cY
 
     @staticmethod
@@ -205,12 +226,12 @@ def expo(number, times):
     return x
 
 def findDistance(imageHeight, parameters=0):
-    parameters = [-1.25682561e+06,  2.15050078e+04, -1.39582986e+02,  4.35240242e-01, -6.56714444e-04,  3.85778698e-07]
-    support = [np.power(imageHeight, 5), np.power(imageHeight, 4), np.power(imageHeight, 3), np.power(imageHeight, 2), np.power(imageHeight, 1), np.power(imageHeight, 0)]
-    distance = 0
-    for i in range(5):
-        distance += parameters[i]*support[i]
-    return distance
+    parameters = [2167.493474610727, -0.0018029922406193975, 1.154756567180726]
+    # support = [imageHeight**4, imageHeight**3, imageHeight**2, imageHeight, 1]
+    # distance = 0
+    # for i in range(5):
+    #     distance += parameters[i]*support[i]
+    # return distance
     # parameters = [[0], [0], [0]]
     # parameters[0] = [1776.5900196236644, -0.00158998129500108, 1.0136829121159376]
     # parameters[1] = [1375.2775678593678, -0.0014182265240214801, 0.8607600759464676]
@@ -222,7 +243,7 @@ def findDistance(imageHeight, parameters=0):
     #     return parameters[2][0]/np.tan(parameters[2][1]*imageHeight+parameters[2][2])
     # else: #4601 - 15000 millimeters
     #     parameters[4][0]/np.tan(parameters[4][1]*imageHeight+parameters[4][2])
-
+    return parameters[0]/tan(parameters[1]*imageHeight+parameters[2])
 
 #Returns an array [XAngle, YAngle] 
 def getAngle(position, imageResolution): 
@@ -292,6 +313,7 @@ def main():
         timeDifference = time.time() - tempoInicial
         if timeDifference > 2:
             print("Time: {} Distance: {} XPos: {} YPos: {}".format(timePassed, distance, objectXPos, objectYPos))
+            print("qualidade do filtro HSV: ", achou/total*100, "%")
             tempoInicial = time.time()
             timePassed+=2
 

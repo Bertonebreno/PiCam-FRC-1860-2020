@@ -1,8 +1,8 @@
 from math import atan
 from time import time
 
-xs = [610, 546, 199]
-ds = [687, 530, 154]
+xs = [477, 416, 177]
+ds = [7140, 5060, 1960]
 
 def f(a):
   return (xs[0]-xs[1])/(xs[0]-xs[2])*(atan(a/ds[0])-atan(a/ds[2])) - atan(a/ds[0]) + atan(a/ds[1])
