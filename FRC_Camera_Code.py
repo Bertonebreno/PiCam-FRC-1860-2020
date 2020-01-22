@@ -27,8 +27,8 @@ netTableDistanceParameters = netTable.getEntry("/Camera/DistanceParameters")
 CALIBRACAO = netTableCalibracao.getBoolean(1)
 focalLength = netTableFocalLength.getDouble(380.191176*2)
 cameraHeight = netTableCameraHeight.getDouble(1)
-brightness = netTableCameraBrightness.getDouble(4)
-exposure = netTableCameraExposure.getDouble(4)
+brightness = netTableCameraBrightness.getDouble(5)
+exposure = netTableCameraExposure.getDouble(8)
 distanceParameters = netTableDistanceParameters.getDoubleArray([0,0,0])
 
 total = 1
@@ -56,14 +56,14 @@ class GripPipeline:
         self.find_contours_output = None
 
         self.__filter_contours_contours = self.find_contours_output
-        self.__filter_contours_min_area = 1000
+        self.__filter_contours_min_area = 700
         self.__filter_contours_min_perimeter = 0.0
-        self.__filter_contours_min_width = 100.0
-        self.__filter_contours_max_width = 700.0
+        self.__filter_contours_min_width = 80.0
+        self.__filter_contours_max_width = 750.0
         self.__filter_contours_min_height = 50.0
         self.__filter_contours_max_height = 400.0
         self.__filter_contours_solidity = [0.0, 100.0]
-        self.__filter_contours_max_vertices = 10000.0
+        self.__filter_contours_max_vertices = 10500.0
         self.__filter_contours_min_vertices = 0.0
         self.__filter_contours_min_ratio = 0.0
         self.__filter_contours_max_ratio = 1000.0
@@ -227,7 +227,7 @@ def expo(number, times):
     return x
 
 def findDistance(imageHeight, parameters=0):
-    parameters = [1179.9093977833322, -0.001280039613577564, 0.6326608380355377]
+    parameters = [62.699739242018275 ,-0.0006735027970270629,  0.564385170675513]
     # support = [imageHeight**4, imageHeight**3, imageHeight**2, imageHeight, 1]
     # distance = 0
     # for i in range(5):
