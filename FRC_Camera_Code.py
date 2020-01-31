@@ -231,11 +231,7 @@ def expo(number, times):
     return x
 
 def findDistance(imageHeight, parameters=0):
-<<<<<<< HEAD
-    parameters = [2.48979733e+02, -1.22025792e-03, 1.08372466e+00]
-=======
     parameters = [62.699739242018275 ,-0.0006735027970270629,  0.564385170675513]
->>>>>>> e2045ebfd5cac8d127d0956e5ac72d778ba3f294
     # support = [imageHeight**4, imageHeight**3, imageHeight**2, imageHeight, 1]
     # distance = 0
     # for i in range(5):
@@ -253,6 +249,38 @@ def findDistance(imageHeight, parameters=0):
     # else: #4601 - 15000 millimeters
     #     parameters[4][0]/np.tan(parameters[4][1]*imageHeight+parameters[4][2])
     return parameters[0]/tan(parameters[1]*imageHeight+parameters[2])
+
+def findBall(imageFrame):
+    blurred = cv2.GaussianBlur(imageFrame, (11, 11), 0)
+    hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+
+    hue, sat, val = getDistanceParameters()
+    mask = cv2.inRange(hsv, (hue[0], sat[0], val[0]),  (hue[1], sat[1], val[1]))
+    mask = cv2.erode(mask, None, iterations=4)
+    mask = cv2.dilate(mask, None, iterations=4)
+    #cv2.imshow("Binary", mask)
+
+    cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = imutils.grab_contours(cnts)
+    center = None
+
+    if len(cnts) > 0:
+        for i in range(len(cnts)):
+            approx = cv2.approxPolyDP(cnts[i],0.01*cv2.arcLength(cnts[i],True),True)
+            contourArea = cv2.contourArea(cnts[i])
+            print("CA: ",contourArea)
+            ((x, y), radius) = cv2.minEnclosingCircle(cnts[i])
+            minEnclosingCircleArea = np.pi*radius**2
+            print("MIN: ", minEnclosingCircleArea)
+            areaRatio = contourArea/(minEnclosingCircleArea)
+            if 0.7<areaRatio and areaRatio<1.3:
+                if radius>15:
+                    M = cv2.moments(cnts[i])
+                    center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+                    cv2.circle(imageFrame, (int(x), int(y)), int(radius), (0, 255, 255), 2)
+                    cv2.circle(imageFrame, center, 5, (0, 0, 255), -1)
+                    print("{} X: {} Y: {}".format(i, x, y))
+    return imageFrame
 
 #Returns an array [XAngle, YAngle] 
 def getAngle(position, imageResolution): 
@@ -302,6 +330,7 @@ def main():
     cs.enableLogging()
     outputStreamEdited = cs.putVideo("processedImage", imageResolutionSend[0], imageResolutionSend[1])
     outputStreamBinary = cs.putVideo("binaryImage", imageResolutionSend[0], imageResolutionSend[1])
+    outputStreamBall = cs.putVideo("ballImage", imageResolutionSend[0], imageResolutionSend[1])
     img = np.zeros(shape=(imageResolutionRasp[1], imageResolutionRasp[0], 3), dtype=np.uint8)
 
     camera = UsbCamera("Camera", "/dev/video0")
@@ -318,12 +347,9 @@ def main():
             processImage.getHSVParameters()
             getCameraParameters()
         t, img = cvSink.grabFrame(img)
-        processedImage, binaryImage, objectXPos, objectYPos = processImage.process(img)
-        netTableXPos.setNumber(objectXPos)
-        netTableYPos.setNumber(objectYPos)
-        somaY += objectYPos
-        if objectYPos != 0:
-            counterY += 1
+        processedImage,binaryImage, objectXPos, objectYPos = processImage.process(img)
+        ballImage = findBall(img)
+
         distance = findDistance(objectYPos, getDistanceParameters())
         angle = getAngle([objectXPos, objectYPos], imageResolutionRasp)
         netTableAngle.setNumber(angle)
@@ -339,6 +365,8 @@ def main():
 
         smallerProcessedImage = cv2.resize(processedImage, (imageResolutionSend[0], imageResolutionSend[1]))
         smallerBinaryImage = cv2.resize(binaryImage, (imageResolutionSend[0], imageResolutionSend[1]))
+        smallerBallImage = cv2.resize(ballImage, (imageResolutionSend[0], imageResolutionSend[1]))
         outputStreamEdited.putFrame(smallerProcessedImage)
         outputStreamBinary.putFrame(smallerBinaryImage)
+        outputStreamBall.putFrame(smallerBallImage)
 main()
