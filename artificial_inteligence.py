@@ -43,8 +43,8 @@ cap = cv2.VideoCapture("http://131.173.8.23/mjpg/video.mjpg")
 
 images, labels = loading_training_dataset()
 
-# x0_parameters = np.random.rand(9*w*h+3)*0.00001
-parameters = np.load("perfect_params.npy")
+x0_parameters = np.random.rand(3*w*h+1)*0.00001
+# parameters = np.load("perfect_params.npy")
 
 def error_squared(parameters):
     print("calculating error")
@@ -88,24 +88,24 @@ def minimize_callback(x):
 
 initial_time = time()
 
-# sol = minimize(error_squared, 
-#     x0_parameters, 
-#     method='CG', 
-#     jac=error_derivative, 
-#     callback=minimize_callback)
-while True:
-    ret, frame = cap.read()
-    new_frame = cv2.resize(frame, (w, h))
-    X = np.reshape(new_frame, (3*w*h))
-    result = func(X, parameters)
-    x = result[0]
-    y = result[1]
-    r = result[2]
-    print("x:",x)
-    print("y:",y)
-    print("r:",r)
-    cv2.circle(new_frame, (int(x), int(y)), int(r), (0, 0, 255), 4)
-    cv2.circle(new_frame, (int(x), int(y)), 2, (0, 0, 255), 4)
-    cv2.imshow("image", new_frame)
-    if cv2.waitKey(1) == 27:
-        exit(0)
+sol = minimize(error_squared, 
+    x0_parameters, 
+    method='CG', 
+    jac=error_derivative, 
+    callback=minimize_callback)
+# while True:
+#     ret, frame = cap.read()
+#     new_frame = cv2.resize(frame, (w, h))
+#     X = np.reshape(new_frame, (3*w*h))
+#     result = func(X, parameters)
+#     x = result[0]
+#     y = result[1]
+#     r = result[2]
+#     print("x:",x)
+#     print("y:",y)
+#     print("r:",r)
+#     cv2.circle(new_frame, (int(x), int(y)), int(r), (0, 0, 255), 4)
+#     cv2.circle(new_frame, (int(x), int(y)), 2, (0, 0, 255), 4)
+#     cv2.imshow("image", new_frame)
+#     if cv2.waitKey(1) == 27:
+#         exit(0)
