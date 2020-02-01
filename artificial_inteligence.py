@@ -11,8 +11,9 @@ w = 480
 h = 270
 
 model = Sequential()
-model.add(Dense(3, input_dim=3*w*h))
-sgd = SGD(lr=1e-10)
+model.add(Dense(32, input_dim=3*w*h))
+model.add(Dense(3))
+sgd = SGD(lr=1e-10, nesterov=True)
 model.compile(loss='mse',
               optimizer=sgd,
               metrics=['accuracy'])
@@ -35,7 +36,7 @@ def loading_training_dataset():
         image = cv2.imread("training_dataset/images/"+str(i)+".jpeg")
         flat_image = np.reshape(image, (3*w*h))
         images.append(flat_image)
-        label_file = open("training_dataset/labels/"+str(n)+".txt", "r")
+        label_file = open("training_dataset/labels/"+str(i)+".txt", "r")
         content = label_file.read()
         new_label = list(map(float, content.split()))
         # new_label[0] /= w
@@ -53,7 +54,7 @@ if training:
     images, labels = loading_training_dataset()
     model.fit(images, labels,
             epochs=100,
-            batch_size=32,
+            batch_size=20,
             shuffle=True)
 
     model.save_weights('model_weights.h5')
