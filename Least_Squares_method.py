@@ -1,47 +1,67 @@
-from math import tan, sin
+import numpy as np
+from scipy.optimize import minimize, root_scalar
+import matplotlib.pyplot as plt
+from math import atan
+from time import time
 
-D = [2445, 3705, 4775, 5758, 7356]
-Y = [143, 254, 305, 335, 370]
+D = [775,673,573,472,365,267,198]
+Y = [636,593,546,498,404,279,140]
 n = len(D)
-# b = -0.001280039613577564
-# c = 0.6326608380355377
-def eq1(b, c):
-    sum1 = 0
-    for i in range(n):
-        sum1 += Y[i]/(tan(b*Y[i]+c)*(sin(b*Y[i]+c))**2)
-    sum2 = 0
-    for i in range(n):
-        sum2 += D[i]/tan(b*Y[i]+c)
-    sum3 = 0
-    for i in range(n):
-        sum3 += D[i]*Y[i]/tan(b*Y[i]+c)
-    sum4 = 0
-    for i in range(n):
-        sum4 += 1/(tan(b*Y[i]+c))**2
-    return sum1*sum2-sum3*sum4
 
-def eq2(b, c):
-    sum1 = 0
-    for i in range(n):
-        sum1 += 1/(tan(b*Y[i]+c)*(sin(b*Y[i]+c))**2)
-    sum2 = 0
-    for i in range(n):
-        sum2 += D[i]/tan(b*Y[i]+c)
-    sum3 = 0
-    for i in range(n):
-        sum3 += D[i]/tan(b*Y[i]+c)
-    sum4 = 0
-    for i in range(n):
-        sum4 += 1/(tan(b*Y[i]+c))**2
-    return sum1*sum2-sum3*sum4
+initial_time = time()
 
-# calc a
-sum1 = 0
-for i in range(n):
-    sum1 += D[i]/tan(b*Y[i]+c)
-sum2 = 0
-for i in range(n):
-    sum2 += 1/(tan(b*Y[i]+c))**2
-a = sum1/sum2
-print("a:", a)
+last_position = n-1
+mid_position = int(n/2)
+first_position = 0
 
+def find_x0_function(a):
+  return (Y[first_position]-Y[mid_position])/(Y[first_position]-Y[last_position])*(atan(a/D[first_position])-atan(a/D[last_position])) - atan(a/D[first_position]) + atan(a/D[mid_position])
+
+# Xs = []
+# Ys = []
+# for i in range(0, 1000):
+#     Xs.append(i)
+#     Ys.append(find_x0_function(i))
+# plt.plot(Xs, Ys)
+# plt.show()
+
+sol1 = root_scalar(find_x0_function, x0=100, bracket=[1, 500])
+#1.64719536e+02 -9.45465789e-04  8.63562412e-01
+#1.64722700e+02 -9.45494432e-04  8.63583089e-01
+def squared_error_function(x):
+    a = x[0]
+    b = x[1]
+    c = x[2]
+    error = 0
+    for i in range(n):
+        error += (D[i] - (a/np.tan(b*Y[i]+c)))**2
+    return error
+
+amin = sol1.root-50
+amax = sol1.root+50
+a = sol1.root
+b = (atan(a/D[first_position]) - atan(a/D[mid_position]))/(Y[first_position]-Y[mid_position])
+c = atan(a/D[first_position])-b*Y[first_position]
+
+top = [a, b, c]
+m = squared_error_function([a, b, c])
+a = amin
+while a < amax:
+    x0 = np.array([a, b, c])
+    sol2 = minimize(squared_error_function, x0, bounds=[(amin, amax), (-1, 0), (0.1, 2)])
+    if sol2.success:
+        #print("\n", round(a-amin, 2), "/", round(amax-amin, 2))
+        #print("error: ", round(sol2.fun, 6))
+        #print("minimum:", round(m, 6))
+        #print(sol2.x)
+        if sol2.fun < m:
+            top = sol2.x
+            m = sol2.fun
+    else:
+        if a % 10 == 0:
+            print(a, "n rolou")
+    a += 0.01
+print("top:")
+print(top)
+final_time = time()
+print("time: {}".format(final_time-initial_time))

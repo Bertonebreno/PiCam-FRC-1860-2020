@@ -15,6 +15,9 @@ netTable.startClientTeam(1860)
 
 netTableCalibracao = netTable.getEntry("/CALIBRACAO")
 netTableDistance = netTable.getEntry("/Distance")
+netTableXPos = netTable.getEntry("/XPos")
+netTableYPos = netTable.getEntry("/YPos")
+netTableAngle = netTable.getEntry("/Angle")
 netTableHue = netTable.getEntry("/Camera/Hue")
 netTableSaturation = netTable.getEntry("/Camera/Saturation")
 netTableValue = netTable.getEntry("/Camera/Value")
@@ -25,7 +28,7 @@ netTableCameraExposure = netTable.getEntry("/Camera/Exposure")
 netTableDistanceParameters = netTable.getEntry("/Camera/DistanceParameters")
 
 CALIBRACAO = netTableCalibracao.getBoolean(1)
-focalLength = netTableFocalLength.getDouble(380.191176*2)
+focalLength = 1078.4675088792567#netTableFocalLength.getDouble(380.191176*2)
 cameraHeight = netTableCameraHeight.getDouble(1)
 brightness = netTableCameraBrightness.getDouble(5)
 exposure = netTableCameraExposure.getDouble(8)
@@ -33,6 +36,8 @@ distanceParameters = netTableDistanceParameters.getDoubleArray([0,0,0])
 
 total = 1
 achou = 1
+somaY = 0
+counterY = 0
 
 class GripPipeline:
     """
@@ -77,13 +82,6 @@ class GripPipeline:
             self.__hsv_threshold_hue = netTableHue.getDoubleArray([0, 0])
             self.__hsv_threshold_saturation = netTableSaturation.getDoubleArray([0, 0])
             self.__hsv_threshold_value = netTableValue.getDoubleArray([0, 0])
-            if self.__hsv_threshold_hue == [0, 0] and self.__hsv_threshold_saturation == [0, 0] and self.__hsv_threshold_value == [0, 0]:
-                # Probably we are not using values from networktables, so let's take them from the internal json
-                with open('parameters.json', 'r') as f:
-                    parameters_dict = json.load(f)
-                self.__hsv_threshold_hue = parameters_dict['hue']
-                self.__hsv_threshold_saturation = parameters_dict['sat']
-                self.__hsv_threshold_value = parameters_dict['val']
         except:
             print("Error HSV parameters")
 
@@ -95,6 +93,7 @@ class GripPipeline:
         """
         # Step HSV_Threshold0:
         self.__hsv_threshold_input = source0
+        #self.__hsv_threshold_input = source0
         (self.hsv_threshold_output) = self.__hsv_threshold(self.__hsv_threshold_input, self.__hsv_threshold_hue, self.__hsv_threshold_saturation, self.__hsv_threshold_value)
         # Step Find_Contours0:
         self.__find_contours_input = self.hsv_threshold_output
@@ -113,6 +112,8 @@ class GripPipeline:
         global total
         global achou
         total += 1
+        centerX = 0
+        centerY = 0
         try:
             c = cntx[0]
             extLeft = tuple(c[c[:, :, 0].argmin()][0])
@@ -123,6 +124,9 @@ class GripPipeline:
             cv2.circle(baseImage, extTop, 7, (0, 0, 255), 5)
             extBottom = tuple(c[c[:, :, 1].argmax()][0]) 
             cv2.circle(baseImage, extBottom, 7, (0, 0, 255), 5)
+            centerX = int((extLeft[0]+extRight[0])/2)
+            centerY = int((extTop[1]+extBottom[1])/2)
+            cv2.circle(baseImage, (centerX, centerY), 7, (255, 0, 255), 5)
             achou += 1
             #print("left:{} right:{} top:{} bottom:{}".format(extLeft, extRight, extTop, extBottom))
         except:
@@ -141,7 +145,7 @@ class GripPipeline:
             cv2.putText(baseImage, str(cY), (cX + 20, cY - 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 255), 2)
             #cv2.rectangle(baseImage, (500, 300), (700,500), (255, 0, 0), 10)
-        return baseImage, self.hsv_threshold_output, cX, cY
+        return baseImage, self.hsv_threshold_output, centerX, centerY
 
     @staticmethod
     def __hsv_threshold(input, hue, sat, val):
@@ -317,6 +321,8 @@ def getDistanceParameters():
 
 processImage = GripPipeline()
 def main():
+    global counterY
+    global somaY
     imageResolutionRasp = [1280, 720]
     imageResolutionSend = [320, 180]
 
@@ -346,10 +352,14 @@ def main():
 
         distance = findDistance(objectYPos, getDistanceParameters())
         angle = getAngle([objectXPos, objectYPos], imageResolutionRasp)
+        netTableAngle.setNumber(angle)
         timeDifference = time.time() - tempoInicial
         if timeDifference > 2:
-            print("Time: {} Distance: {} XPos: {} YPos: {}".format(timePassed, distance, objectXPos, objectYPos))
-            print("qualidade do filtro HSV: ", achou/total*100, "%")
+            mediaY = 0
+            if counterY != 0:
+                mediaY = somaY/counterY
+            print("Distance: {} XPos: {} YPos: {} X Angle: {}".format(distance, objectXPos, objectYPos, angle[0]))
+            #print("qualidade do filtro HSV: ", achou/total*100, "%")
             tempoInicial = time.time()
             timePassed+=2
 
