@@ -11,7 +11,7 @@ def getBallColorParameters():
     sat = [0,255]
     val = [0,255]
     try:
-        with open('/home/bertone/Desktop/ball-tracking/distanceParameters.json', 'r') as f:
+        with open('/home/bertone/Documents/Coding/PiCam-FRC-1860-2020/ball-tracking/distanceParameters.json', 'r') as f:
             parameters_dict = json.load(f)
         hue = parameters_dict['hue']
         sat = parameters_dict['sat']
@@ -56,11 +56,15 @@ def findBall(imageFrame):
 
 	hue, sat, val = getBallColorParameters()
 	mask = cv2.inRange(hsv, (hue[0], sat[0], val[0]),  (hue[1], sat[1], val[1]))
-	mask = cv2.erode(mask, None, iterations=3)
-	mask = cv2.dilate(mask, None, iterations=1)
-	#cv2.imshow("Binary", mask)
+	mask = cv2.erode(mask, None, iterations=5)
+	mask = cv2.dilate(mask, None, iterations=3)
 
-	cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7))
+	opening = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=8)
+
+	cv2.imshow("Opening", opening)
+
+	cnts = cv2.findContours(opening.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 	cnts = imutils.grab_contours(cnts)
 	center = None
 
@@ -89,7 +93,7 @@ while True:
 	# if frame is None:
 	# 	break
 
-	mask, frame = findBall(cv2.imread('/home/bertone/Desktop/ball-tracking/ballImages/ball'+str(i)+'.jpeg'))
+	mask, frame = findBall(cv2.imread('/home/bertone/Documents/Coding/PiCam-FRC-1860-2020/ball-tracking/ballImages/ball'+str(i)+'.jpeg'))
 
 	cv2.imshow("Mask", mask)
 	cv2.imshow("Frame", frame)
