@@ -62,6 +62,7 @@ while True:
     frame = cv2.resize(frame, (w, h))
     images_list = os.listdir("training_dataset/images")
     labels_list = os.listdir("training_dataset/labels")
+    print(len(labels_list))
     if len(images_list) != len(labels_list):
         print("some problem with the training dataset")
         exit(0)
