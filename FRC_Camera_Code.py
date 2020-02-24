@@ -1,6 +1,5 @@
 from cscore import CameraServer, UsbCamera
 from networktables import NetworkTables, NetworkTablesInstance
-import ntcore
 import cv2
 import numpy as np
 import json
@@ -14,23 +13,42 @@ netTable = NetworkTablesInstance.getDefault()
 netTable.startClientTeam(1860)
 
 netTableCalibration = netTable.getEntry("/Calibration")
-netTableDistance = netTable.getEntry("Target/Distance")
-netTableXPos = netTable.getEntry("Target/XPos")
-netTableYPos = netTable.getEntry("Target/YPos")
-netTableAngle = netTable.getEntry("/Angle")
-netTableHue = netTable.getEntry("/Camera/Hue")
-netTableSaturation = netTable.getEntry("/Camera/Saturation")
-netTableValue = netTable.getEntry("/Camera/Value")
-netTableFocalLength = netTable.getEntry("/Camera/FocalLength")
-netTableCameraBrightness = netTable.getEntry("/Camera/Brightness")
-netTableCameraExposure = netTable.getEntry("/Camera/Exposure")
-netTableDistanceParameters = netTable.getEntry("/Camera/DistanceParameters")
+netTableDistance = netTable.getEntry("/Target/Distance")
+netTableAngle = netTable.getEntry("/Target/Angle")
+
+netTableTargetXPos = netTable.getEntry("/Target/XPos")
+netTableTargetYPos = netTable.getEntry("/Target/YPos")
+
+netTableBallXPos = netTable.getEntry("/Ball/XPos")
+netTableBallYPos = netTable.getEntry("/Ball/YPos")
+
+netTableTargetHue = netTable.getEntry("/CameraTarget/Hue")
+netTableTargetSaturation = netTable.getEntry("/CameraTarget/Saturation")
+netTableTargetValue = netTable.getEntry("/CameraTarget/Value")
+
+netTableBallHue = netTable.getEntry("/CameraBall/Hue")
+netTableBallSaturation = netTable.getEntry("/CameraBall/Saturation")
+netTableBallValue = netTable.getEntry("/CameraBall/Value")
+
+netTableTargetFocalLength = netTable.getEntry("/CameraTarget/FocalLength")
+netTableTargetBrightness = netTable.getEntry("/CameraTarget/Brightness")
+netTableTargetExposure = netTable.getEntry("/CameraTarget/Exposure")
+
+netTableBallBrightness = netTable.getEntry("/CameraBall/Brightness")
+netTableBallExposure = netTable.getEntry("/CameraBall/Exposure")
+
+netTableDistanceParameters = netTable.getEntry("/CameraTarget/DistanceParameters")
+
 
 calibration = netTableCalibration.getBoolean(1)
-focalLength = netTableFocalLength.getDouble(380.191176*2)
-cameraHeight = netTableCameraHeight.getDouble(1)
-brightness = netTableCameraBrightness.getDouble(5)
-exposure = netTableCameraExposure.getDouble(8)
+
+focalLengthTarget = netTableTargetFocalLength.getDouble(380.191176*2)
+brightnessTarget = netTableTargetBrightness.getDouble(5)
+exposureTarget = netTableTargetExposure.getDouble(8)
+
+brightnessBall = netTableBallBrightness.getDouble(50)
+exposureBall = netTableBallExposure.getDouble(50)
+
 distanceParameters = netTableDistanceParameters.getDoubleArray([0,0,0])
 
 total = 1
@@ -69,12 +87,12 @@ class GripPipeline:
     def getHSVParameters(self):
         try:
             # First we will try to get hsv parameters from networktables
-            self.__hsv_threshold_hue = netTableHue.getDoubleArray([0, 0])
-            self.__hsv_threshold_saturation = netTableSaturation.getDoubleArray([0, 0])
-            self.__hsv_threshold_value = netTableValue.getDoubleArray([0, 0])
+            self.__hsv_threshold_hue = netTableTargetHue.getDoubleArray([0, 0])
+            self.__hsv_threshold_saturation = netTableTargetSaturation.getDoubleArray([0, 0])
+            self.__hsv_threshold_value = netTableTargetValue.getDoubleArray([0, 0])
             if self.__hsv_threshold_hue == [0, 0] and self.__hsv_threshold_saturation == [0, 0] and self.__hsv_threshold_value == [0, 0]:
                 # Probably we are not using values from networktables, so let's take them from the internal json
-                with open('parameters.json', 'r') as f:
+                with open('targetParameters.json', 'r') as f:
                     parameters_dict = json.load(f)
                 self.__hsv_threshold_hue = parameters_dict['hue']
                 self.__hsv_threshold_saturation = parameters_dict['sat']
@@ -105,6 +123,7 @@ class GripPipeline:
         global total
         global achou
         total += 1
+        centerX, centerY = 0, 0
         try:
             c = cntx[0]
             extLeft = tuple(c[c[:, :, 0].argmin()][0])
@@ -152,7 +171,7 @@ class GripPipeline:
         else:
             mode = cv2.RETR_LIST
         method = cv2.CHAIN_APPROX_SIMPLE
-        im2, contours, hierarchy = cv2.findContours(input, mode = mode, method = method)
+        contours, hierarchy = cv2.findContours(input, mode = mode, method = method)
         return contours
 
     @staticmethod
@@ -191,68 +210,119 @@ def expo(number, times):
         x*=number
     return x
 
-def findDistance(imageHeight, parameters=[62.699739242018275 ,-0.0006735027970270629,  0.564385170675513]):
-    return parameters[0]/tan(parameters[1]*imageHeight+parameters[2])
+def findDistance(x, parameters = [62.699739242018275 ,-0.0006735027970270629,  0.564385170675513]):
+    return parameters[0]/tan(parameters[1]*x + parameters[2])
 
-def getBallColorParameters():
+def getBallParameters():
     hue = [0,255]
     sat = [0,255]
     val = [0,255]
     try:
-        with open('ballColorParameters.json', 'r') as f:
+        with open('ballParameters.json', 'r') as f:
             parameters_dict = json.load(f)
         hue = parameters_dict['hue']
         sat = parameters_dict['sat']
         val = parameters_dict['val']
     except:
-        print("Error ball color parameters")
-    return hue, sat, val
+        print("Error ball parameters")
+    return [hue, sat, val]
 
-def findBall(imageFrame):
-    blurred = cv2.GaussianBlur(imageFrame, (11, 11), 0)
-    hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+def findBalls(image, hsvParameters):
+    hue = hsvParameters[0]
+    sat = hsvParameters[1]
+    val = hsvParameters[2]
+    output_image = image.copy()
+    binary_image = cv2.inRange(image, (hue[0], sat[0], val[0]), (hue[1], sat[1], val[1]))
+    contours, hierarchy = cv2.findContours(binary_image, mode = cv2.RETR_LIST, method = cv2.CHAIN_APPROX_SIMPLE)
 
-    hue, sat, val = getBallColorParameters()
-    mask = cv2.inRange(hsv, (hue[0], sat[0], val[0]),  (hue[1], sat[1], val[1]))
-    mask = cv2.erode(mask, None, iterations=4)
-    mask = cv2.dilate(mask, None, iterations=4)
-    #cv2.imshow("Binary", mask)
+    min_area = 100
+    min_perimeter = 0
+    min_width = 0
+    max_width = 750
+    min_height = 0
+    max_height = 400
+    solidity = [0.0, 100.0]
+    max_vertex_count = 10500
+    min_vertex_count = 0
+    min_ratio = 0
+    max_ratio = 1000
 
-    cnts = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = imutils.grab_contours(cnts)
-    center = None
+    output_contours = []
+    for contour in contours:
+        x,y,w,h = cv2.boundingRect(contour)
+        if (w < min_width or w > max_width):
+            continue
+        if (h < min_height or h > max_height):
+            continue
+        area = cv2.contourArea(contour)
+        if (area < min_area):
+            continue
+        if (cv2.arcLength(contour, True) < min_perimeter):
+            continue
+        hull = cv2.convexHull(contour)
+        solid = 100 * area / cv2.contourArea(hull)
+        if (solid < solidity[0] or solid > solidity[1]):
+            continue
+        if (len(contour) < min_vertex_count or len(contour) > max_vertex_count):
+            continue
+        ratio = (float)(w) / h
+        if (ratio < min_ratio or ratio > max_ratio):
+            continue
+        output_contours.append(contour)
+    
+    biggerX, biggerY = 0, 0
+    try:
+        cX, cY = 0, 0
+        biggerCont = []
+        biggerSize = 0
+        biggerId = 0
+        for i in range(len(output_contours)):
+            c = output_contours[i]
+            Xs, Ys = np.split(c, 2, axis=2)
+            bottom = np.amax(Ys)
+            top = np.amin(Ys)
+            left = np.amin(Xs)
+            right = np.amax(Xs)
+            if max(bottom-top, right-left) > biggerSize:
+                biggerSize = max(top-bottom, right-left)
+                biggerCont = c.copy()
+                biggerId = i
+        for i in range(len(output_contours)):
+            c = output_contours[i]
+            Xs, Ys = np.split(c, 2, axis=2)
+            bottom = np.amax(Ys)
+            top = np.amin(Ys)
+            left = np.amin(Xs)
+            right = np.amax(Xs)
+            M = cv2.moments(c)
+            cX = int((right + left)/2)
+            cY = int((top + bottom)/2)
+            radius = int(max(top-bottom, right-left)/2)
+            cv2.circle(output_image, (cX, cY), 7, (0, 0, 255), 5)
+            cv2.putText(output_image, str(cX), (cX - 20, cY - 20), cv2.FONT_HERSHEY_SIMPLEX, .5, (0, 0, 255), 2)
+            cv2.putText(output_image, str(cY), (cX + 20, cY - 20), cv2.FONT_HERSHEY_SIMPLEX, .5, (0, 0, 255), 2)
+            if i == biggerId:
+                biggerX, biggerY = cX, cY
+                cv2.circle(output_image, (cX, cY), radius, (0, 255, 0), 3)
+            else:
+                cv2.circle(output_image, (cX, cY), radius, (255, 0, 0), 3)
+    except:
+        print("deu ruim")
 
-    if len(cnts) > 0:
-        for i in range(len(cnts)):
-            approx = cv2.approxPolyDP(cnts[i],0.01*cv2.arcLength(cnts[i],True),True)
-            contourArea = cv2.contourArea(cnts[i])
-            print("CA: ",contourArea)
-            cv2.drawContours(imageFrame, cnts[i], -1, (0,255,0), 3)
-            ((x, y), radius) = cv2.minEnclosingCircle(cnts[i])
-            minEnclosingCircleArea = np.pi*radius**2
-            print("MIN: ", minEnclosingCircleArea)
-            areaRatio = contourArea/(minEnclosingCircleArea)
-            if 0.7<areaRatio and areaRatio<1.3:
-                if radius>15:
-                    M = cv2.moments(cnts[i])
-                    center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
-                    cv2.circle(imageFrame, (int(x), int(y)), int(radius), (0, 255, 255), 2)
-                    cv2.circle(imageFrame, center, 5, (0, 0, 255), -1)
-                    print("{} X: {} Y: {}".format(i, x, y))
-    return imageFrame
+    return output_image, binary_image, biggerX, biggerY
 
 #Returns an array [XAngle, YAngle] 
 def getAngle(position, imageResolution): 
-    XAngle = np.arctan((position[0] - (imageResolution[0]-1)/2)/focalLength)*180/np.pi
-    YAngle = np.arctan((position[1] - (imageResolution[1]-1)/2)/focalLength)*180/np.pi
+    XAngle = np.arctan((position[0] - (imageResolution[0]-1)/2)/focalLengthTarget)*180/np.pi
+    YAngle = np.arctan((position[1] - (imageResolution[1]-1)/2)/focalLengthTarget)*180/np.pi
     angle = [XAngle, YAngle]
     return angle
 
 def getCameraParameters():
     try:
-        focalLength = netTableFocalLength.getDouble(380.191176*2)
-        brightness = netTableCameraBrightness.getDouble(5)
-        exposure = netTableCameraExposure.getDouble(8)
+        focalLengthTarget = netTableTargetFocalLength.getDouble(380.191176*2)
+        brightnessTarget = netTableTargetBrightness.getDouble(5)
+        exposureTarget = netTableTargetExposure.getDouble(8)
     except:
         print("Error Camera parameters")
 
@@ -276,42 +346,62 @@ def main():
 
     cs = CameraServer.getInstance()
     cs.enableLogging()
-    outputStreamEdited = cs.putVideo("processedImage", imageResolutionSend[0], imageResolutionSend[1])
-    outputStreamBinary = cs.putVideo("binaryImage", imageResolutionSend[0], imageResolutionSend[1])
-    img = np.zeros(shape=(imageResolutionRasp[1], imageResolutionRasp[0], 3), dtype=np.uint8)
+    outputStreamTarget = cs.putVideo("targetImage", imageResolutionSend[0], imageResolutionSend[1])
+    outputStreamBall = cs.putVideo("ballImage", imageResolutionSend[0], imageResolutionSend[1])
+    
+    targetImage = np.zeros(shape=(imageResolutionRasp[1], imageResolutionRasp[0], 3), dtype=np.uint8)
+    ballImage = np.zeros(shape=(imageResolutionRasp[1], imageResolutionRasp[0], 3), dtype=np.uint8)
 
-    camera = UsbCamera("Camera", "/dev/video0")
-    camera.setResolution(imageResolutionRasp[0], imageResolutionRasp[1])
-    camera.setBrightness(brightness)
-    camera.setExposureManual(exposure)
-    cs.addCamera(camera)
-    cvSink = cs.getVideo()
-    cvSink.setSource(camera)
+    cameraTarget = UsbCamera("Camera Target", "/dev/video4")
+    cameraTarget.setResolution(imageResolutionRasp[0], imageResolutionRasp[1])
+    cameraTarget.setBrightness(brightnessTarget)
+    cameraTarget.setExposureManual(exposureTarget)
+    cs.addCamera(cameraTarget)
+    cvSinkTarget = cs.getVideo(name="Camera Target")
+    cvSinkTarget.setSource(cameraTarget)
+
+    cameraBall = UsbCamera("Camera Ball", "/dev/video2")
+    cameraBall.setResolution(imageResolutionRasp[0], imageResolutionRasp[1])
+    cameraBall.setBrightness(brightnessBall)
+    cameraBall.setExposureManual(exposureBall)
+    cs.addCamera(cameraBall)
+    cvSinkBall = cs.getVideo(name="Camera Ball")
+    cvSinkBall.setSource(cameraBall)
+
     tempoInicial = time.time()
     timePassed = 0
     while True:
         if(calibration):
             processImage.getHSVParameters()
             getCameraParameters()
-        t, img = cvSink.grabFrame(img)
-        processedImage, binaryImage, objectXPos, objectYPos = processImage.process(img)
+        t, targetImage = cvSinkTarget.grabFrame(targetImage)
+        t, ballImage = cvSinkBall.grabFrame(ballImage)
 
-        distance = findDistance(objectYPos, getDistanceParameters())
-        angle = getAngle([objectXPos, objectYPos], imageResolutionRasp)
+        targetImage, binaryTargetImage, targetXPos, targetYPos = processImage.process(targetImage)
+        ballImage, binaryBallImage, ballXPos, ballYPos = findBalls(ballImage, getBallParameters())
+
+        distance = findDistance(targetYPos, getDistanceParameters())
+        angle = getAngle([targetXPos, targetYPos], imageResolutionRasp)
 
         netTableDistance.setDouble(distance)
         netTableAngle.setDoubleArray(angle)
+        netTableBallXPos.setDouble(ballXPos)
+        netTableBallYPos.setDouble(ballYPos)
+        netTableTargetXPos.setDouble(targetXPos)
+        netTableTargetYPos.setDouble(targetYPos)
 
         timeDifference = time.time() - tempoInicial
         if timeDifference > 2:
-            print("Time: {} Distance: {} XPos: {} YPos: {}".format(timePassed, distance, objectXPos, objectYPos))
+            print("Time: {} Distance: {} XPos: {} YPos: {}".format(timePassed, distance, targetXPos, targetYPos))
             print("qualidade do filtro HSV: ", achou/total*100, "%")
             tempoInicial = time.time()
             timePassed+=2
-
-        smallerProcessedImage = cv2.resize(processedImage, (imageResolutionSend[0], imageResolutionSend[1]))
-        smallerBinaryImage = cv2.resize(binaryImage, (imageResolutionSend[0], imageResolutionSend[1]))
-        outputStreamEdited.putFrame(smallerProcessedImage)
-        outputStreamBinary.putFrame(smallerBinaryImage)
-        #outputStreamBall.putFrame(ballImage)
+        
+        smallerTargetImage = cv2.resize(targetImage, (imageResolutionSend[0], imageResolutionSend[1]))
+        smallerBallImage = cv2.resize(ballImage, (imageResolutionSend[0], imageResolutionSend[1]))
+        outputStreamTarget.putFrame(smallerTargetImage)
+        outputStreamBall.putFrame(smallerBallImage)
+        
+        if cv2.waitKey(1) == 27:
+            exit(0)
 main()
