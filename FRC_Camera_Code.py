@@ -3,11 +3,8 @@ from networktables import NetworkTables, NetworkTablesInstance
 import cv2
 import numpy as np
 import json
-import logging
 import time
 from math import tan
-
-logging.basicConfig(level=logging.DEBUG)
 
 netTable = NetworkTablesInstance.getDefault()
 netTable.startClientTeam(1860)
