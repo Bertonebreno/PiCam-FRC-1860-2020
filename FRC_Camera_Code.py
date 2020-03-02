@@ -5,6 +5,10 @@ import numpy as np
 import json
 import time
 from math import tan
+import os
+
+targetCameraAddress = "video0"
+ballCameraAddress = "video2"
 
 netTable = NetworkTablesInstance.getDefault()
 netTable.startClientTeam(1860)
@@ -14,30 +18,33 @@ netTableCalibration = netTable.getEntry("/Calibration")
 
 netTableTargetXPos = netTable.getEntry("/Target/XPos")
 netTableTargetYPos = netTable.getEntry("/Target/YPos")
-netTableTargetAngle = netTable.getEntry("/Target/Angle")
+netTableTargetHorizontalAngle = netTable.getEntry("/Target/HorizontalAngle")
+netTableTargetLauncherAngle = netTable.getEntry("/Target/LauncherAngle")
 netTableTargetDistance = netTable.getEntry("/Target/Distance")
-
-netTableBallXPos = netTable.getEntry("/Ball/XPos")
-netTableBallYPos = netTable.getEntry("/Ball/YPos")
-netTableBallAngle = netTable.getEntry("/Ball/Angle")
 
 netTableTargetHue = netTable.getEntry("/Target/Hue")
 netTableTargetSaturation = netTable.getEntry("/Target/Saturation")
 netTableTargetValue = netTable.getEntry("/Target/Value")
 
-netTableBallHue = netTable.getEntry("/Ball/Hue")
-netTableBallSaturation = netTable.getEntry("/Ball/Saturation")
-netTableBallValue = netTable.getEntry("/Ball/Value")
-
 netTableTargetFocalLength = netTable.getEntry("/Target/FocalLength")
 netTableTargetBrightness = netTable.getEntry("/Target/Brightness")
 netTableTargetExposure = netTable.getEntry("/Target/Exposure")
 
+netTableDistanceParameters = netTable.getEntry("/Target/DistanceParameters")
+
+
+
+netTableBallXPos = netTable.getEntry("/Ball/XPos")
+netTableBallYPos = netTable.getEntry("/Ball/YPos")
+netTableBallAngle = netTable.getEntry("/Ball/Angle")
+
+netTableBallHue = netTable.getEntry("/Ball/Hue")
+netTableBallSaturation = netTable.getEntry("/Ball/Saturation")
+netTableBallValue = netTable.getEntry("/Ball/Value")
+
 netTableBallFocalLength = netTable.getEntry("/Ball/FocalLength")
 netTableBallBrightness = netTable.getEntry("/Ball/Brightness")
 netTableBallExposure = netTable.getEntry("/Ball/Exposure")
-
-netTableDistanceParameters = netTable.getEntry("/Target/DistanceParameters")
 
 
 calibration = netTableCalibration.getBoolean(1)
@@ -207,7 +214,7 @@ def findTarget(image):
     hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     binary_image = cv2.inRange(hsv_image, (hue[0], sat[0], val[0]), (hue[1], sat[1], val[1]))
     
-    contours, hierarchy = cv2.findContours(binary_image, mode = cv2.RETR_LIST, method = cv2.CHAIN_APPROX_SIMPLE)
+    _, contours, hierarchy = cv2.findContours(binary_image, mode = cv2.RETR_LIST, method = cv2.CHAIN_APPROX_SIMPLE)
 
     min_area = 700
     min_perimeter = 0
@@ -242,7 +249,7 @@ def findTarget(image):
     
     return output_image, binary_image, centerX, centerY
 
-def findBalls(image):
+def findBall(image):
     hue = ballHue
     sat = ballSaturation
     val = ballValue
@@ -251,7 +258,7 @@ def findBalls(image):
     hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     binary_image = cv2.inRange(hsv_image, (hue[0], sat[0], val[0]), (hue[1], sat[1], val[1]))
     
-    contours, hierarchy = cv2.findContours(binary_image, mode = cv2.RETR_LIST, method = cv2.CHAIN_APPROX_SIMPLE)
+    _, contours, hierarchy = cv2.findContours(binary_image, mode = cv2.RETR_LIST, method = cv2.CHAIN_APPROX_SIMPLE)
 
     min_area = 100
     min_perimeter = 0
@@ -310,44 +317,59 @@ def findBalls(image):
 
     return output_image, binary_image, biggerX, biggerY
 
-def getAngle(position, imageResolution):
+def getHorizontalAngle(x, imageResolution):
     global focalLengthTarget
-    XAngle = np.arctan((position[0] - (imageResolution[0]-1)/2)/focalLengthTarget)*180/np.pi
-    YAngle = np.arctan((position[1] - (imageResolution[1]-1)/2)/focalLengthTarget)*180/np.pi
-    angle = [XAngle, YAngle]
+    angle = np.arctan((x - (imageResolution[0]-1)/2)/focalLengthTarget)*180/np.pi
     return angle
+
+def getLauncherAngle(x):
+    return 3/22*x - 135/11
 
 def main():
 
     cs = CameraServer.getInstance()
     cs.enableLogging()
     outputStreamTarget = cs.putVideo("targetImage", imageResolutionSend[0], imageResolutionSend[1])
+    outputStreamTargetBinary = cs.putVideo("targetImageBinary", imageResolutionSend[0], imageResolutionSend[1])
     outputStreamBall = cs.putVideo("ballImage", imageResolutionSend[0], imageResolutionSend[1])
-    
+    outputStreamBallBinary = cs.putVideo("ballImageBinary", imageResolutionSend[0], imageResolutionSend[1])
+
     targetImage = np.zeros(shape=(imageResolutionRasp[1], imageResolutionRasp[0], 3), dtype=np.uint8)
     ballImage = np.zeros(shape=(imageResolutionRasp[1], imageResolutionRasp[0], 3), dtype=np.uint8)
 
-    cameraTarget = UsbCamera("Camera Target", "/dev/video2")
-    cameraTarget.setResolution(imageResolutionRasp[0], imageResolutionRasp[1])
-    cameraTarget.setBrightness(brightnessTarget)
-    cameraTarget.setExposureManual(exposureTarget)
-    cs.addCamera(cameraTarget)
-    cvSinkTarget = cs.getVideo(name="Camera Target")
-    cvSinkTarget.setSource(cameraTarget)
+    availableTargetCamera = targetCameraAddress in os.listdir("/dev")
+    availableBallCamera = ballCameraAddress in os.listdir("/dev")
 
-    cameraBall = UsbCamera("Camera Ball", "/dev/video2")
-    cameraBall.setResolution(imageResolutionRasp[0], imageResolutionRasp[1])
-    cameraBall.setBrightness(brightnessBall)
-    cameraBall.setExposureManual(exposureBall)
-    cs.addCamera(cameraBall)
-    cvSinkBall = cs.getVideo(name="Camera Ball")
-    cvSinkBall.setSource(cameraBall)
+    if availableTargetCamera:
+        cameraTarget = UsbCamera("Camera Target", "/dev/" + targetCameraAddress)
+        cameraTarget.setResolution(imageResolutionRasp[0], imageResolutionRasp[1])
+        cameraTarget.setBrightness(brightnessTarget)
+        cameraTarget.setExposureManual(exposureTarget)
+        cs.addCamera(cameraTarget)
+        cvSinkTarget = cs.getVideo(name="Camera Target")
+        cvSinkTarget.setSource(cameraTarget)
 
+    if availableBallCamera:
+        cameraBall = UsbCamera("Camera Ball", "/dev/" + ballCameraAddress)
+        cameraBall.setResolution(imageResolutionRasp[0], imageResolutionRasp[1])
+        cameraBall.setBrightness(brightnessBall)
+        cameraBall.setExposureManual(exposureBall)
+        cs.addCamera(cameraBall)
+        cvSinkBall = cs.getVideo(name="Camera Ball")
+        cvSinkBall.setSource(cameraBall)
+    
+    counter = 0
     while True:
 
-        initial_time = time.time()
+        if availableTargetCamera:
+            availableTargetCamera = targetCameraAddress in os.listdir("/dev")
+        if availableBallCamera:
+            availableBallCamera = ballCameraAddress in os.listdir("/dev")
 
-        if(calibration):
+        counter += 1
+        textOutput = ""
+
+        if calibration:
             
             getHSVBallParameters()
             getHSVTargetParameters()
@@ -357,31 +379,40 @@ def main():
 
             getTargetDistanceParameters()
         
-        t, targetImage = cvSinkTarget.grabFrame(targetImage)
-        t, ballImage = cvSinkBall.grabFrame(ballImage)
+        if availableTargetCamera:
+            t, targetImage = cvSinkTarget.grabFrame(targetImage)
+            targetImage, binaryTargetImage, targetXPos, targetYPos = findTarget(targetImage)
+            distance = calculateDistance(targetYPos)
+            horizontalAngle = getHorizontalAngle(targetXPos, imageResolutionRasp)
+            launcherAngle = getLauncherAngle(distance)
 
-        targetImage, binaryTargetImage, targetXPos, targetYPos = findTarget(targetImage)
-        ballImage, binaryBallImage, ballXPos, ballYPos = findBalls(ballImage)
+            netTableTargetDistance.setDouble(distance)
+            netTableTargetHorizontalAngle.setDouble(horizontalAngle)
+            netTableTargetLauncherAngle.setDouble(launcherAngle)
+            netTableTargetXPos.setDouble(targetXPos)
+            netTableTargetYPos.setDouble(targetYPos)
+            smallerBinaryTargetImage = cv2.resize(binaryTargetImage, (imageResolutionSend[0], imageResolutionSend[1]))
+            smallerTargetImage = cv2.resize(targetImage, (imageResolutionSend[0], imageResolutionSend[1]))
+            outputStreamTargetBinary.putFrame(smallerBinaryTargetImage)
+            outputStreamTarget.putFrame(smallerTargetImage)
+            textOutput += "Distance: {} horizontalAngle: {} launcherAngle: {} targetYPos: {}\n".format(distance, horizontalAngle, launcherAngle, targetYPos)
+        else:
+            textOutput += "Target Camera disabled\n"
 
-        distance = calculateDistance(targetYPos)
-        angle = getAngle([targetXPos, targetYPos], imageResolutionRasp)
 
-        netTableTargetDistance.setDouble(distance)
-        netTableTargetAngle.setDoubleArray(angle)
-        netTableBallXPos.setDouble(ballXPos)
-        netTableBallYPos.setDouble(ballYPos)
-        netTableTargetXPos.setDouble(targetXPos)
-        netTableTargetYPos.setDouble(targetYPos)
-        
-        smallerTargetImage = cv2.resize(targetImage, (imageResolutionSend[0], imageResolutionSend[1]))
-        smallerBallImage = cv2.resize(ballImage, (imageResolutionSend[0], imageResolutionSend[1]))
-        outputStreamTarget.putFrame(smallerTargetImage)
-        outputStreamBall.putFrame(smallerBallImage)
-        
-        if time.time() - initial_time > 2:
-            initial_time = time.time()
-            print("Time: {} Distance: {} XPos: {} YPos: {}".format(timePassed, distance, targetXPos, targetYPos))
+        if availableBallCamera:
+            t, ballImage = cvSinkBall.grabFrame(ballImage)
+            ballImage, binaryBallImage, ballXPos, ballYPos = findBall(ballImage)
+            # netTableBallXPos.setDouble(ballXPos)
+            # netTableBallYPos.setDouble(ballYPos)
+            smallerBinaryBallImage = cv2.resize(binaryBallImage, (imageResolutionSend[0], imageResolutionSend[1]))
+            smallerBallImage = cv2.resize(ballImage, (imageResolutionSend[0], imageResolutionSend[1]))
+            outputStreamBallBinary.putFrame(smallerBinaryBallImage)
+            outputStreamBall.putFrame(smallerBallImage)
+            # textOutput += "ballXPos: {} ballYPos: {}\n".format(ballXPos, ballYPos)
+        else:
+            textOutput += "Ball Camera disabled\n"
 
-        if cv2.waitKey(1) == 27:
-            exit(0)
+        if counter % 10 == 0:
+            print(textOutput)
 main()

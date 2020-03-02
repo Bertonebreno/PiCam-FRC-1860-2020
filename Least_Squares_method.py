@@ -1,11 +1,10 @@
 import numpy as np
 from scipy.optimize import minimize, root_scalar
-import matplotlib.pyplot as plt
 from math import atan
 from time import time
 
-D = [775,673,573,472,365,267,198]
-Y = [636,593,546,498,404,279,140]
+D = [201.5, 180, 153, 135, 118, 94]
+Y = [638, 577, 473.5, 394, 322, 221]
 n = len(D)
 
 initial_time = time()
@@ -57,6 +56,7 @@ while a < amax:
         if sol2.fun < m:
             top = sol2.x
             m = sol2.fun
+        print(a-amin/amax-amin)
     else:
         if a % 10 == 0:
             print(a, "n rolou")
