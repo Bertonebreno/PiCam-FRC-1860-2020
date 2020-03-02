@@ -175,7 +175,7 @@ def filterContours(contours, min_area, min_perimeter,
 
     for contour in contours:
 
-        x,y,w,h = cv2.boundingRect(contour)
+        x, y, w, h = cv2.boundingRect(contour)
         area = cv2.contourArea(contour)
         hull = cv2.convexHull(contour)
         solid = 100000000
