@@ -20,6 +20,7 @@ netTableTargetXPos = netTable.getEntry("/Target/XPos")
 netTableTargetYPos = netTable.getEntry("/Target/YPos")
 netTableTargetHorizontalAngle = netTable.getEntry("/Target/HorizontalAngle")
 netTableTargetLauncherAngle = netTable.getEntry("/Target/LauncherAngle")
+netTableTargetAvailable = netTable.getEntry("/Target/Available")
 netTableTargetDistance = netTable.getEntry("/Target/Distance")
 
 netTableTargetHue = netTable.getEntry("/Target/Hue")
@@ -78,11 +79,14 @@ def getHSVTargetParameters():
     targetValue = netTableTargetValue.getDoubleArray([0, 0])
     if targetHue == [0, 0] and targetSaturation == [0, 0] and targetValue == [0, 0]:
         # Probably we are not using values from networktables, so let's take them from the internal json
-        with open('parameters/hsvTarget.json', 'r') as f:
-            parameters_dict = json.load(f)
-        targetHue = parameters_dict['hue']
-        targetSaturation = parameters_dict['sat']
-        targetValue = parameters_dict['val']
+        try:
+            with open('parameters/hsvTarget.json', 'r') as f:
+                parameters_dict = json.load(f)
+            targetHue = parameters_dict['hue']
+            targetSaturation = parameters_dict['sat']
+            targetValue = parameters_dict['val']
+        except:
+            pass
 
 def getHSVBallParameters():
     global ballHue, ballSaturation, ballValue
@@ -92,11 +96,14 @@ def getHSVBallParameters():
     ballValue = netTableBallValue.getDoubleArray([0, 0])
     if ballHue == [0, 0] and ballSaturation == [0, 0] and ballValue == [0, 0]:
         # Probably we are not using values from networktables, so let's take them from the internal json
-        with open('parameters/hsvBall.json', 'r') as f:
-            parameters_dict = json.load(f)
-        ballHue = parameters_dict['hue']
-        ballSaturation = parameters_dict['sat']
-        ballValue = parameters_dict['val']
+        try:
+            with open('parameters/hsvBall.json', 'r') as f:
+                parameters_dict = json.load(f)
+            ballHue = parameters_dict['hue']
+            ballSaturation = parameters_dict['sat']
+            ballValue = parameters_dict['val']
+        except:
+            pass
 
 def getCameraTargetParameters():
     global focalLengthTarget, brightnessTarget, exposureTarget
@@ -155,14 +162,10 @@ def calculateDistance(x):
 
 def calculateCenter(contour):
 
-    Xs, Ys = np.split(contour, 2, axis=2)
-    bottom = np.amax(Ys)
-    top = np.amin(Ys)
-    left = np.amin(Xs)
-    right = np.amax(Xs)
+    x, y, w, h = cv2.boundingRect(contour)
 
-    centerX = int((left+right)/2)
-    centerY = int((top+bottom)/2)
+    centerX = int(x + w/2)
+    centerY = int(y + h/2)
 
     return centerX, centerY
 
@@ -214,7 +217,7 @@ def findTarget(image):
     hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     binary_image = cv2.inRange(hsv_image, (hue[0], sat[0], val[0]), (hue[1], sat[1], val[1]))
     
-    _, contours, hierarchy = cv2.findContours(binary_image, mode = cv2.RETR_LIST, method = cv2.CHAIN_APPROX_SIMPLE)
+    _, contours, _ = cv2.findContours(binary_image, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_SIMPLE)
 
     min_area = 700
     min_perimeter = 0
@@ -233,23 +236,20 @@ def findTarget(image):
     solidity, max_vertex_count, min_vertex_count,
     min_ratio, max_ratio)
     
-    cX, cY = 0, 0
-    for c in output_contours:
-        cX, cY = calculateCenter(c)
-        cv2.circle(output_image, (cX, cY), 7, (0, 0, 255), 5)
-        cv2.putText(output_image, str(cX), (cX - 20, cY - 20),
-            cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 255), 2)
-        cv2.putText(output_image, str(cY), (cX + 20, cY - 20),
-            cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 0, 255), 2)
-    
     centerX, centerY = 0, 0
+    available = True
 
     if len(output_contours) > 0:
         centerX, centerY = calculateCenter(output_contours[0])
+        cv2.circle(output_image, (centerX, centerY), 7, (0, 0, 255), 5)
+        cv2.drawContours(output_image, output_contours, 0, (255, 255, 0), 2)
+    else:
+        available = False
     
-    return output_image, binary_image, centerX, centerY
+    return available, output_image, binary_image, centerX, centerY
 
 def findBall(image):
+    global ballHue, ballSaturation, ballValue
     hue = ballHue
     sat = ballSaturation
     val = ballValue
@@ -258,7 +258,7 @@ def findBall(image):
     hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     binary_image = cv2.inRange(hsv_image, (hue[0], sat[0], val[0]), (hue[1], sat[1], val[1]))
     
-    _, contours, hierarchy = cv2.findContours(binary_image, mode = cv2.RETR_LIST, method = cv2.CHAIN_APPROX_SIMPLE)
+    _, contours, _ = cv2.findContours(binary_image, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_SIMPLE)
 
     min_area = 100
     min_perimeter = 0
@@ -297,15 +297,11 @@ def findBall(image):
     
     for i in range(len(output_contours)):
         c = output_contours[i]
-        Xs, Ys = np.split(c, 2, axis=2)
-        bottom = np.amax(Ys)
-        top = np.amin(Ys)
-        left = np.amin(Xs)
-        right = np.amax(Xs)
+        x, y, w, h = cv2.boundingRect(c)
         M = cv2.moments(c)
-        cX = int((right + left)/2)
-        cY = int((top + bottom)/2)
-        radius = int(max(top-bottom, right-left)/2)
+        cX = int(x + w/2)
+        cY = int(y + h/2)
+        radius = int(max(w, h)/2)
         cv2.circle(output_image, (cX, cY), 7, (0, 0, 255), 5)
         cv2.putText(output_image, str(cX), (cX - 20, cY - 20), cv2.FONT_HERSHEY_SIMPLEX, .5, (0, 0, 255), 2)
         cv2.putText(output_image, str(cY), (cX + 20, cY - 20), cv2.FONT_HERSHEY_SIMPLEX, .5, (0, 0, 255), 2)
@@ -320,10 +316,14 @@ def findBall(image):
 def getHorizontalAngle(x, imageResolution):
     global focalLengthTarget
     angle = np.arctan((x - (imageResolution[0]-1)/2)/focalLengthTarget)*180/np.pi
-    return angle
+    return angle-7
 
 def getLauncherAngle(x):
-    return 3/22*x - 135/11
+    a = (100, 0)
+    b = (246, 10)
+    m = (b[1]-a[1])/(b[0]-a[0])
+    h = b[1] - b[0]*m
+    return m*x + h
 
 def main():
 
@@ -332,7 +332,7 @@ def main():
     outputStreamTarget = cs.putVideo("targetImage", imageResolutionSend[0], imageResolutionSend[1])
     outputStreamTargetBinary = cs.putVideo("targetImageBinary", imageResolutionSend[0], imageResolutionSend[1])
     outputStreamBall = cs.putVideo("ballImage", imageResolutionSend[0], imageResolutionSend[1])
-    outputStreamBallBinary = cs.putVideo("ballImageBinary", imageResolutionSend[0], imageResolutionSend[1])
+    # outputStreamBallBinary = cs.putVideo("ballImageBinary", imageResolutionSend[0], imageResolutionSend[1])
 
     targetImage = np.zeros(shape=(imageResolutionRasp[1], imageResolutionRasp[0], 3), dtype=np.uint8)
     ballImage = np.zeros(shape=(imageResolutionRasp[1], imageResolutionRasp[0], 3), dtype=np.uint8)
@@ -381,16 +381,22 @@ def main():
         
         if availableTargetCamera:
             t, targetImage = cvSinkTarget.grabFrame(targetImage)
-            targetImage, binaryTargetImage, targetXPos, targetYPos = findTarget(targetImage)
+            available, targetImage, binaryTargetImage, targetXPos, targetYPos = findTarget(targetImage)
+            
             distance = calculateDistance(targetYPos)
             horizontalAngle = getHorizontalAngle(targetXPos, imageResolutionRasp)
             launcherAngle = getLauncherAngle(distance)
 
+            if distance > 95 and distance < 240:
+                cv2.rectangle(targetImage, (20, 20), (100, 100), (0, 255, 0), -1)
+            
+            netTableTargetAvailable.setBoolean(available)
             netTableTargetDistance.setDouble(distance)
             netTableTargetHorizontalAngle.setDouble(horizontalAngle)
             netTableTargetLauncherAngle.setDouble(launcherAngle)
             netTableTargetXPos.setDouble(targetXPos)
             netTableTargetYPos.setDouble(targetYPos)
+
             smallerBinaryTargetImage = cv2.resize(binaryTargetImage, (imageResolutionSend[0], imageResolutionSend[1]))
             smallerTargetImage = cv2.resize(targetImage, (imageResolutionSend[0], imageResolutionSend[1]))
             outputStreamTargetBinary.putFrame(smallerBinaryTargetImage)
@@ -402,12 +408,16 @@ def main():
 
         if availableBallCamera:
             t, ballImage = cvSinkBall.grabFrame(ballImage)
-            ballImage, binaryBallImage, ballXPos, ballYPos = findBall(ballImage)
+            # ballImage, binaryBallImage, ballXPos, ballYPos = findBall(ballImage)
+            # angle = getHorizontalAngle(ballXPos, imageResolutionRasp)
+
             # netTableBallXPos.setDouble(ballXPos)
             # netTableBallYPos.setDouble(ballYPos)
-            smallerBinaryBallImage = cv2.resize(binaryBallImage, (imageResolutionSend[0], imageResolutionSend[1]))
+            # netTableBallAngle.setDouble(angle)
+
+            # smallerBinaryBallImage = cv2.resize(binaryBallImage, (imageResolutionSend[0], imageResolutionSend[1]))
             smallerBallImage = cv2.resize(ballImage, (imageResolutionSend[0], imageResolutionSend[1]))
-            outputStreamBallBinary.putFrame(smallerBinaryBallImage)
+            # outputStreamBallBinary.putFrame(smallerBinaryBallImage)
             outputStreamBall.putFrame(smallerBallImage)
             # textOutput += "ballXPos: {} ballYPos: {}\n".format(ballXPos, ballYPos)
         else:
